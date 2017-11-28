@@ -1,0 +1,210 @@
+---
+title: "Practical Machine Learning: Prediction Assignment Writeup"
+author: "Ben Karmay"
+date: "25/11/2017"
+output: 
+  html_document: 
+    fig_caption: yes
+    keep_md: yes
+---
+
+##SYNOPSIS
+
+Human Activity Recognition (HAR) is a key research area that is gaining increasing attention, especially for the development of context-aware systems. There are many potential applications for HAR, like: elderly monitoring, life log systems for monitoring energy expenditure and for supporting weight-loss programs, and digital assistants for weight lifting exercises. Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively.
+
+Six participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).
+
+This report will describe how the data captured are used to identify the parameters involved in predicting the movement involved based on the above classification, and then to predict the movement for 20 test cases.
+
+The training data were divided into two groups, a training data and a validation data (to be used to validate the data), to derived the prediction model by using the training data, to validate the model where an expected out-of-sample error rate of less than 0.5%, or 99.5% accuracy, would be acceptable before it is used to perform the prediction on the 20 test cases - that must have 100% accuracy (to obtain 20 points awarded).
+
+The training model developed using Random Forest was able to achieve over 99.99% accuracy, or less than 0.03% out-of-sample error, and was able to predict the 20 test cases with 100% accuracy.
+
+
+####Check if the data files exist. If not, download it from the URL. When reading in the file, change invalid values to NA.
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from http://groupware.les.inf.puc-rio.br/har.
+
+####Load required packages and set seed.
+
+```{r, echo=TRUE}
+library(knitr)
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(rattle)
+library(randomForest)
+library(corrplot)
+set.seed(12345)
+
+```
+
+####Download and load data files for cleaning
+
+```{r, echo=TRUE}
+# set the URL for the download
+UrlTrain <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+UrlTest  <- "http://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# download the datasets
+training <- read.csv(url(UrlTrain))
+testing  <- read.csv(url(UrlTest))
+
+# create a partition with the training dataset 
+inTrain  <- createDataPartition(training$classe, p=0.7, list=FALSE)
+TrainSet <- training[inTrain, ]
+TestSet  <- training[-inTrain, ]
+dim(TrainSet)
+```
+
+
+
+```{r, echo=TRUE}
+dim(TestSet)
+```
+
+Both created datasets have 160 variables. Those variables have plenty of NA, that can be removed with the cleaning procedures below. The Near Zero variance (NZV) variables are also removed and the ID variables as well.
+
+```{r, echo=TRUE}
+# remove variables with Nearly Zero Variance
+NZV <- nearZeroVar(TrainSet)
+TrainSet <- TrainSet[, -NZV]
+TestSet  <- TestSet[, -NZV]
+dim(TrainSet)
+```
+
+
+```{r, echo=TRUE}
+dim(TestSet)
+```
+
+
+```{r, echo=TRUE}
+
+# remove variables that are mostly NA
+AllNA    <- sapply(TrainSet, function(x) mean(is.na(x))) > 0.95
+TrainSet <- TrainSet[, AllNA==FALSE]
+TestSet  <- TestSet[, AllNA==FALSE]
+dim(TrainSet)
+```
+
+```{r, echo=TRUE}
+dim(TestSet)
+
+```
+
+
+```{r, echo=TRUE}
+# remove identification only variables (columns 1 to 5)
+TrainSet <- TrainSet[, -(1:5)]
+TestSet  <- TestSet[, -(1:5)]
+dim(TrainSet)
+```
+
+
+```{r, echo=TRUE}
+dim(TestSet)
+```
+
+With the cleaning process above, the number of variables for the analysis has been reduced to 54 only.
+
+####Prediction Model Building
+
+Three methods will be applied to model the regressions (in the Train dataset) and the best one (with higher accuracy when applied to the Test dataset) will be used for the quiz predictions. The methods are: Random Forests, Decision Tree and Generalized Boosted Model, as described below.
+
+A Confusion Matrix is plotted at the end of each analysis to better visualize the accuracy of the models.
+
+####Method: Random Forest
+
+```{r, echo=TRUE}
+# model fit
+set.seed(12345)
+controlRF <- trainControl(method="cv", number=3, verboseIter=FALSE)
+modFitRandForest <- train(classe ~ ., data=TrainSet, method="rf",
+                          trControl=controlRF)
+modFitRandForest$finalModel
+```
+
+
+```{r, echo=TRUE}
+# prediction on Test dataset
+predictRandForest <- predict(modFitRandForest, newdata=TestSet)
+confMatRandForest <- confusionMatrix(predictRandForest, TestSet$classe)
+confMatRandForest
+```
+
+####Method: Decision Trees
+
+```{r, echo=TRUE}
+# model fit
+set.seed(12345)
+modFitDecTree <- rpart(classe ~ ., data=TrainSet, method="class")
+fancyRpartPlot(modFitDecTree)
+```
+
+```{r, echo=TRUE}
+# prediction on Test dataset
+predictDecTree <- predict(modFitDecTree, newdata=TestSet, type="class")
+confMatDecTree <- confusionMatrix(predictDecTree, TestSet$classe)
+confMatDecTree
+```
+
+
+```{r, echo=TRUE}
+# plot matrix results
+plot(confMatDecTree$table, col = confMatDecTree$byClass, 
+     main = paste("Decision Tree - Accuracy =",
+                  round(confMatDecTree$overall['Accuracy'], 4)))
+```
+
+####Method: Generalized Boosted Model
+
+```{r, echo=TRUE}
+# model fit
+set.seed(12345)
+controlGBM <- trainControl(method = "repeatedcv", number = 5, repeats = 1)
+modFitGBM  <- train(classe ~ ., data=TrainSet, method = "gbm",
+                    trControl = controlGBM, verbose = FALSE)
+modFitGBM$finalModelinsta
+```
+
+
+
+```{r, echo=TRUE}
+# prediction on Test dataset
+predictGBM <- predict(modFitGBM, newdata=TestSet)
+confMatGBM <- confusionMatrix(predictGBM, TestSet$classe)
+confMatGBM
+```
+
+
+```{r, echo=TRUE}
+# plot matrix results
+plot(confMatGBM$table, col = confMatGBM$byClass, 
+     main = paste("GBM - Accuracy =", round(confMatGBM$overall['Accuracy'], 4)))
+```
+
+####Conclusion: 
+
+Applying the Selected Model to the Test Data
+The accuracy of the 3 regression modeling methods above are:
+
+        Random Forest : 0.9963
+        Decision Tree : 0.7368
+        GBM : 0.9839
+
+
+```{r, echo=TRUE}
+predictTEST <- predict(modFitRandForest, newdata=testing)
+predictTEST
+```
+
+
